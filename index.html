@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS</title>
+<script src="https://js.puter.com/v2/"></script>
+<style>
+:root{--bg:#050b14;--panel:#0b1626;--line:#16324f;--cyan:#27e1ff;--dim:#6f8fa8;--text:#d9f3ff;--warn:#ffb347}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 50% -10%,#0d2540,var(--bg) 60%);color:var(--text);font-family:system-ui,Segoe UI,Roboto,sans-serif;height:100vh;height:100dvh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:20px;letter-spacing:6px;color:var(--cyan);font-weight:600}
+#hdrR{margin-left:auto;text-align:right;font-size:12px;color:var(--dim);line-height:1.4}
+#orb{width:38px;height:38px;border-radius:50%;border:2px solid var(--cyan);box-shadow:0 0 14px var(--cyan),inset 0 0 12px var(--cyan);position:relative;transition:.3s;flex:none}
+#orb::after{content:"";position:absolute;inset:9px;border-radius:50%;background:var(--cyan);opacity:.7}
+#orb.listening{animation:pulse 1s infinite;border-color:#7dff9a;box-shadow:0 0 18px #7dff9a,inset 0 0 12px #7dff9a}
+#orb.listening::after{background:#7dff9a}
+#orb.speaking{animation:pulse .5s infinite;border-color:var(--warn);box-shadow:0 0 18px var(--warn),inset 0 0 12px var(--warn)}
+#orb.speaking::after{background:var(--warn)}
+#orb.thinking{animation:spin 1.2s linear infinite;border-style:dashed}
+@keyframes pulse{50%{transform:scale(1.15)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+main{flex:1;display:grid;grid-template-columns:1fr 360px;min-height:0}
+#chat{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+#log{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:85%;padding:10px 14px;border-radius:12px;white-space:pre-wrap;line-height:1.45;font-size:15px;word-wrap:break-word}
+.me{align-self:flex-end;background:#12385a}
+.ai{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+.sys{align-self:center;color:var(--dim);font-size:13px}
+#bar{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line)}
+input,select,textarea{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit;min-width:0}
+#msg{flex:1}
+button{background:var(--panel);color:var(--cyan);border:1px solid var(--cyan);border-radius:8px;padding:10px 14px;cursor:pointer;font:inherit}
+button:hover{background:#0f2a44}
+button.on{background:var(--cyan);color:#001018}
+aside{display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;border:0;border-radius:0;color:var(--dim);padding:10px 4px;font-size:13px}
+.tabs button.act{color:var(--cyan);background:#0f2a44}
+.pane{display:none;flex:1;overflow-y:auto;padding:14px;flex-direction:column;gap:8px}
+.pane.act{display:flex}
+.item{display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px}
+.item span{flex:1;word-break:break-word}
+.item.done span{text-decoration:line-through;color:var(--dim)}
+.item button{padding:2px 8px}
+label{font-size:12px;color:var(--dim);display:block;margin-top:6px}
+label+*{width:100%}
+.hint{font-size:12px;color:var(--dim);line-height:1.5}
+.col{display:flex;flex-direction:column;gap:8px}
+details{font-size:12px;color:var(--dim);line-height:1.5}
+code{background:#0f2a44;padding:1px 4px;border-radius:4px;word-break:break-all}
+@media(max-width:800px){main{grid-template-columns:1fr;grid-template-rows:1fr 48%}#chat{border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header>
+  <div id="orb"></div><h1>JARVIS</h1>
+  <div id="hdrR"><div id="status">Ready</div><div id="syncBadge">Sync: off</div></div>
+</header>
+<main>
+  <section id="chat">
+    <div id="log"></div>
+    <div id="bar">
+      <button id="micBtn" title="Tap to talk">🎤</button>
+      <button id="wakeBtn" title="Always listening: say 'Jarvis ...'">👂</button>
+      <input id="msg" placeholder="Talk to Jarvis…  (try: weather in Delhi)" autocomplete="off">
+      <button id="sendBtn">Send</button>
+    </div>
+  </section>
+  <aside>
+    <div class="tabs">
+      <button class="act" data-t="tasks">Tasks</button>
+      <button data-t="notes">Notes</button>
+      <button data-t="rem">Alerts</button>
+      <button data-t="sync">Sync</button>
+      <button data-t="set">⚙</button>
+    </div>
+    <div class="pane act" id="tasks">
+      <div style="display:flex;gap:6px"><input id="taskIn" placeholder="New task" style="flex:1"><button id="taskAdd">+</button></div>
+      <div id="taskList" class="col" style="gap:6px"></div>
+    </div>
+    <div class="pane" id="notes">
+      <div style="display:flex;gap:6px"><input id="noteIn" placeholder="New note" style="flex:1"><button id="noteAdd">+</button></div>
+      <div id="noteList" class="col" style="gap:6px"></div>
+    </div>
+    <div class="pane" id="rem">
+      <div id="remList" class="col" style="gap:6px"></div>
+      <div class="hint">Say: “remind me in 10 minutes to call mom”. Reminders fire while Jarvis is open on a device.</div>
+    </div>
+    <div class="pane" id="sync">
+      <div class="hint">Tasks, notes, reminders and chat history sync across your devices with no login. Everything is encrypted in your browser before it is uploaded.</div>
+      <div class="item"><span id="syncState">Not connected</span></div>
+      <div id="syncOff" class="col">
+        <label>Storage</label>
+        <select id="syncBackend">
+          <option value="jb">Quick start: jsonblob.com (no setup)</option>
+          <option value="fb">Firebase Realtime Database (most reliable)</option>
+        </select>
+        <div id="fbBox" style="display:none"><label>Firebase database URL</label><input id="fbUrl" placeholder="https://yourproject-default-rtdb.firebaseio.com"></div>
+        <button id="syncCreate">Create new sync</button>
+        <label>…or connect this device to an existing one</label>
+        <input id="syncJoin" placeholder="Paste device link or sync code">
+        <button id="syncConnect">Connect</button>
+        <details>
+          <summary>Firebase setup (2 minutes, free)</summary>
+          1) console.firebase.google.com → Add project (analytics off).<br>
+          2) Build → Realtime Database → Create database.<br>
+          3) Rules tab, paste this and Publish:<br>
+          <code>{"rules":{"jarvis":{"$code":{".read":true,".write":true}}}}</code><br>
+          4) Copy the database URL shown at the top and paste it above.
+        </details>
+      </div>
+      <div id="syncOn" class="col" style="display:none">
+        <button id="syncCopy">Copy link for another device</button>
+        <button id="syncNowBtn">Sync now</button>
+        <button id="syncOffBtn">Disconnect this device</button>
+        <div class="hint">Open the copied link on your other device and it connects automatically. Anyone with the link can read your data, so keep it private. API keys are never synced.</div>
+      </div>
+    </div>
+    <div class="pane" id="set">
+      <label>AI brain</label>
+      <select id="provider">
+        <option value="puter">Puter.js (free, no key)</option>
+        <option value="gemini">Google Gemini (free key)</option>
+        <option value="local">Offline commands only</option>
+      </select>
+      <div id="puterBox">
+        <label>Puter model (search-capable models can browse the web)</label>
+        <input id="puterModel" placeholder="perplexity/sonar">
+      </div>
+      <div id="gemBox">
+        <label>Gemini API key (stored only on this device)</label>
+        <input id="gemKey" type="password" placeholder="AIza…">
+        <label>Gemini model</label>
+        <input id="gemModel" placeholder="gemini-2.5-flash">
+      </div>
+      <label><input type="checkbox" id="webOn" style="width:auto"> Use the internet (web search, Wikipedia)</label>
+      <label>Home city (for “weather”)</label>
+      <input id="city" placeholder="e.g. Delhi">
+      <label>Voice</label><select id="voiceSel"></select>
+      <label>Speech speed <span id="rv">1</span></label>
+      <input id="rate" type="range" min="0.6" max="1.6" step="0.1" value="1">
+      <label><input type="checkbox" id="speakOn" style="width:auto"> Speak replies aloud</label>
+      <label>Your name (synced)</label>
+      <input id="userName" placeholder="Boss">
+      <button id="clearBtn" style="margin-top:12px">Clear chat</button>
+      <div class="hint">Voice input works in Chrome / Edge / Safari. Free Gemini key: aistudio.google.com. Voice, AI and city settings are per device.</div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
+const save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+
+/* ================= DATA ================= */
+let cfg=Object.assign({provider:'puter',gemKey:'',gemModel:'gemini-2.5-flash',puterModel:'perplexity/sonar',voice:'',rate:1,speak:true,web:true,city:''},load('j_cfg',{}));
+let D=load('j_data',null);
+if(!D){
+  D={tasks:[],notes:[],rems:[],hist:[],histClear:0,name:'',nameU:0};
+  const now=Date.now();
+  load('j_tasks',[]).forEach((t,i)=>D.tasks.push({id:uid(),text:t.text,done:!!t.done,c:now+i,u:now}));
+  load('j_notes',[]).forEach((n,i)=>D.notes.push({id:uid(),text:n,c:now+i,u:now}));
+  const oc=load('j_cfg',{});if(oc.name){D.name=oc.name;D.nameU=now}
+}
+const live=a=>a.filter(x=>!x.del);
+const tasksLive=()=>live(D.tasks).sort((a,b)=>a.c-b.c);
+const notesLive=()=>live(D.notes).sort((a,b)=>a.c-b.c);
+const remsLive=()=>live(D.rems).filter(r=>!r.fired).sort((a,b)=>a.due-b.due);
+const who=()=>D.name||'sir';
+
+function commit(){
+  const cut=Date.now()-30*864e5;
+  ['tasks','notes','rems'].forEach(k=>D[k]=D[k].filter(x=>!(x.del&&x.u<cut)));
+  save('j_data',D);renderAll();scheduleSync();
+}
+function addTask(text){const n=Date.now();D.tasks.push({id:uid(),text,done:false,c:n,u:n});commit()}
+function addNote(text){const n=Date.now();D.notes.push({id:uid(),text,c:n,u:n});commit()}
+function addRem(ms,text){const n=Date.now();D.rems.push({id:uid(),text,due:n+ms,fired:false,c:n,u:n});commit();
+  if('Notification' in window&&Notification.permission==='default')Notification.requestPermission()}
+function setDone(t,v){t.done=v;t.u=Date.now();commit()}
+function del(x){x.del=true;x.u=Date.now();commit()}
+function pushHist(role,content){D.hist.push({id:uid(),role,content,u:Date.now()});D.hist=D.hist.slice(-40)}
+function clearChat(){D.hist=[];D.histClear=Date.now();$('log').innerHTML='';commit()}
+
+/* ---- merge (last-writer-wins per item, deletions are tombstones) ---- */
+function mergeArr(a=[],b=[]){const m=new Map();[...a,...b].forEach(x=>{const o=m.get(x.id);if(!o||x.u>o.u)m.set(x.id,x)});return [...m.values()]}
+function mergeData(a,b){
+  const clear=Math.max(a.histClear||0,b.histClear||0);
+  const hist=mergeArr(a.hist,b.hist).filter(x=>x.u>clear).sort((x,y)=>x.u-y.u).slice(-40);
+  const nm=(b.nameU||0)>(a.nameU||0)?b:a;
+  return{tasks:mergeArr(a.tasks,b.tasks),notes:mergeArr(a.notes,b.notes),rems:mergeArr(a.rems,b.rems),hist,histClear:clear,name:nm.name||'',nameU:nm.nameU||0};
+}
+const canon=d=>JSON.stringify(['tasks','notes','rems','hist'].map(k=>[...(d[k]||[])].sort((x,y)=>x.id<y.id?-1:1)).concat([d.histClear||0,d.name||'',d.nameU||0]));
+
+/* ================= UI HELPERS ================= */
+let busy=false,speaking=false,wake=false;
+function setState(s,t){$('orb').className=s||'';$('status').textContent=t||'Ready'}
+function idle(){setState(wake?'listening':'',wake?'Say “Jarvis…”':'Ready')}
+function addMsg(text,cls){const d=document.createElement('div');d.className='msg '+cls;d.textContent=text;$('log').appendChild(d);$('log').scrollTop=1e9;return d}
+function renderChat(){$('log').innerHTML='';D.hist.filter(x=>x.u>D.histClear).slice(-20).forEach(m=>addMsg(m.content,m.role==='user'?'me':'ai'))}
+
+/* ================= SPEECH OUT ================= */
+let voices=[];
+function loadVoices(){voices=speechSynthesis.getVoices();const s=$('voiceSel');s.innerHTML='';voices.forEach(v=>{const o=document.createElement('option');o.value=v.name;o.textContent=v.name+' ('+v.lang+')';s.appendChild(o)});
+  if(!cfg.voice){const p=voices.find(v=>/en-GB/i.test(v.lang)&&/male|daniel|uk english male/i.test(v.name))||voices.find(v=>/^en/i.test(v.lang));if(p)cfg.voice=p.name}
+  s.value=cfg.voice}
+if('speechSynthesis' in window){speechSynthesis.onvoiceschanged=loadVoices;loadVoices()}
+function say(text){
+  if(!cfg.speak||!('speechSynthesis' in window))return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text.replace(/[*_`#]/g,'').slice(0,800));
+  const v=voices.find(v=>v.name===cfg.voice);if(v)u.voice=v;u.rate=cfg.rate;
+  u.onstart=()=>{speaking=true;setState('speaking','Speaking…')};
+  u.onend=u.onerror=()=>{speaking=false;if(!busy)idle()};
+  speechSynthesis.speak(u);
+}
+function reply(text){addMsg(text,'ai');say(text)}
+
+/* ================= SPEECH IN ================= */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null,armedUntil=0,oneShot=false;
+function makeRec(){
+  if(!SR){addMsg('Voice input is not supported in this browser. Use Chrome or Edge.','sys');return null}
+  const r=new SR();r.lang='en-US';r.interimResults=false;r.continuous=true;
+  r.onresult=e=>{
+    if(speaking)return;
+    const t=e.results[e.results.length-1][0].transcript.trim();if(!t)return;
+    if(oneShot){oneShot=false;r.stop();handle(t);return}
+    if(wake){
+      const m=t.match(/\b(jarvis|jarvish)\b[\s,.:!]*(.*)$/i);
+      if(m){const rest=m[2].trim();if(rest)handle(rest);else{armedUntil=Date.now()+8000;reply('Yes, '+who()+'?')}}
+      else if(Date.now()<armedUntil){armedUntil=0;handle(t)}
+    }
+  };
+  r.onend=()=>{if(wake||oneShot){try{r.start()}catch{}}else{$('micBtn').classList.remove('on');if(!speaking&&!busy)idle()}};
+  r.onerror=e=>{if(e.error==='not-allowed'){wake=false;oneShot=false;$('wakeBtn').classList.remove('on');addMsg('Microphone permission denied.','sys')}};
+  return r}
+$('micBtn').onclick=()=>{
+  if(!rec)rec=makeRec();if(!rec)return;
+  if(oneShot){oneShot=false;rec.stop();return}
+  speechSynthesis.cancel();oneShot=true;$('micBtn').classList.add('on');setState('listening','Listening…');try{rec.start()}catch{}};
+$('wakeBtn').onclick=()=>{
+  if(!rec)rec=makeRec();if(!rec)return;
+  wake=!wake;$('wakeBtn').classList.toggle('on',wake);
+  if(wake){idle();try{rec.start()}catch{}addMsg('Always-listening on. Say “Jarvis, …” followed by your request.','sys')}
+  else{rec.stop();idle()}};
+
+/* ================= RENDER LISTS ================= */
+function itemRow(text,cls,onDel){const d=document.createElement('div');d.className='item'+(cls?' '+cls:'');d.innerHTML='<span></span><button>✕</button>';d.querySelector('span').textContent=text;d.querySelector('button').onclick=onDel;return d}
+function renderAll(){
+  const tl=$('taskList');tl.innerHTML='';
+  tasksLive().forEach((t,i)=>{const d=itemRow((i+1)+'. '+t.text,t.done?'done':'',()=>del(t));
+    const cb=document.createElement('input');cb.type='checkbox';cb.style.width='auto';cb.checked=t.done;cb.onchange=()=>setDone(t,cb.checked);d.prepend(cb);tl.appendChild(d)});
+  const nl=$('noteList');nl.innerHTML='';notesLive().forEach(n=>nl.appendChild(itemRow(n.text,'',()=>del(n))));
+  const rl=$('remList');rl.innerHTML='';remsLive().forEach(r=>rl.appendChild(itemRow(new Date(r.due).toLocaleString()+' — '+r.text,'',()=>del(r))));
+}
+$('taskAdd').onclick=()=>{const v=$('taskIn').value.trim();if(v){addTask(v);$('taskIn').value=''}};
+$('noteAdd').onclick=()=>{const v=$('noteIn').value.trim();if(v){addNote(v);$('noteIn').value=''}};
+$('taskIn').onkeydown=e=>{if(e.key==='Enter')$('taskAdd').click()};
+$('noteIn').onkeydown=e=>{if(e.key==='Enter')$('noteAdd').click()};
+
+setInterval(()=>{
+  const now=Date.now();const due=D.rems.filter(r=>!r.del&&!r.fired&&r.due<=now);if(!due.length)return;
+  due.forEach(r=>{r.fired=true;r.u=now});commit();
+  due.forEach(r=>{reply('Reminder: '+r.text);if('Notification' in window&&Notification.permission==='granted')new Notification('Jarvis reminder',{body:r.text})});
+},1000);
+
+/* ================= INTERNET TOOLS (free, no keys) ================= */
+const jget=async(url)=>{const r=await fetch(url);if(!r.ok)throw new Error('HTTP '+r.status);return r.json()};
+const WX={0:'clear sky',1:'mostly clear',2:'partly cloudy',3:'overcast',45:'foggy',48:'foggy',51:'light drizzle',53:'drizzle',55:'heavy drizzle',61:'light rain',63:'rain',65:'heavy rain',71:'light snow',73:'snow',75:'heavy snow',80:'rain showers',81:'rain showers',82:'violent rain showers',95:'a thunderstorm',96:'a thunderstorm with hail',99:'a thunderstorm with hail'};
+async function weather(city){
+  const g=await jget('https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name='+encodeURIComponent(city));
+  const p=g.results&&g.results[0];if(!p)return "I couldn't find a place called "+city+'.';
+  const w=await jget(`https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=1&timezone=auto`);
+  const c=w.current,d=w.daily;
+  return `${p.name}${p.country?', '+p.country:''}: ${Math.round(c.temperature_2m)}°C (feels ${Math.round(c.apparent_temperature)}°) with ${WX[c.weather_code]||'mixed conditions'}. Today ${Math.round(d.temperature_2m_min[0])} to ${Math.round(d.temperature_2m_max[0])}°C, rain chance ${d.precipitation_probability_max[0]??0}%. Humidity ${c.relative_humidity_2m}%, wind ${Math.round(c.wind_speed_10m)} km/h.`}
+async function currency(n,from,to){
+  const j=await jget(`https://api.frankfurter.dev/v1/latest?base=${from}&symbols=${to}`);
+  const rate=j.rates&&j.rates[to];if(!rate)return "I don't have a rate for "+from+' to '+to+'.';
+  return `${n} ${from} is about ${(n*rate).toLocaleString(undefined,{maximumFractionDigits:2})} ${to} (rate ${rate}, ${j.date}).`}
+async function techNews(){
+  const j=await jget('https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=6');
+  return 'Top tech stories right now:\n'+j.hits.slice(0,5).map((h,i)=>`${i+1}. ${h.title}`).join('\n')}
+async function wikiPages(q,limit=2,chars=600){
+  const j=await jget('https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit='+limit+'&gsrsearch='+encodeURIComponent(q)+'&prop=extracts&exintro=1&explaintext=1&exchars='+chars);
+  const pages=j.query&&j.query.pages?Object.values(j.query.pages).sort((a,b)=>a.index-b.index):[];
+  return pages.filter(p=>p.extract)}
+async function wikiAnswer(q){
+  const s=q.replace(/^(who is|who was|what is|what was|what are|tell me about|define|explain)\s+/i,'').replace(/[?.!]+$/,'');
+  const p=await wikiPages(s,1,450);return p.length?p[0].title+': '+p[0].extract:null}
+const NEEDS_WEB=/\b(who|what|when|where|which|latest|news|today|current|currently|recent|price|score|won|how many|how much|release|define|meaning|population|capital|ceo|president|prime minister|stock|rate|happened)\b/i;
+async function webContext(q){
+  if(!cfg.web||!NEEDS_WEB.test(q))return '';
+  try{const p=await wikiPages(q.replace(/[?.!]+$/,''),2,600);return p.map(x=>`[${x.title}] ${x.extract}`).join('\n\n')}catch{return ''}}
+
+/* ================= LOCAL COMMANDS ================= */
+function parseDur(s){let ms=0;const re=/(\d+(?:\.\d+)?)\s*(second|sec|minute|min|hour|hr)s?/gi;let m;while(m=re.exec(s)){const n=+m[1],u=m[2].toLowerCase();ms+=n*(u.startsWith('h')?3600000:u.startsWith('m')?60000:1000)}return ms}
+const SITES={youtube:'https://youtube.com',gmail:'https://mail.google.com',google:'https://google.com',github:'https://github.com',maps:'https://maps.google.com',calendar:'https://calendar.google.com',drive:'https://drive.google.com',whatsapp:'https://web.whatsapp.com',linkedin:'https://linkedin.com'};
+function tasksText(){const t=tasksLive();return t.length?t.map((x,i)=>`${i+1}. ${x.done?'[done] ':''}${x.text}`).join('\n'):'No tasks.'}
+function local(t){
+  const s=t.toLowerCase().trim().replace(/[.!?]+$/,'');let m;
+  if(/^(what('?s| is) )?(the )?time/.test(s)||s==='time')return 'It is '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'.';
+  if(/^(what('?s| is) )?(the )?(today'?s )?date|what day/.test(s))return 'Today is '+new Date().toLocaleDateString([], {weekday:'long',year:'numeric',month:'long',day:'numeric'})+'.';
+  if(m=s.match(/^(?:add|create|new) task (?:to )?(.+)/)){addTask(t.trim().slice(t.toLowerCase().indexOf(m[1])));return 'Task added.'}
+  if(/^(show|list|what are) (my )?tasks|^what do i have to do/.test(s))return tasksText();
+  if(m=s.match(/^(?:complete|finish|done|mark) (?:task )?(\d+)(?: done)?$/)){const x=tasksLive()[+m[1]-1];if(x){setDone(x,true);return 'Marked task '+m[1]+' as complete.'}return 'No such task.'}
+  if(m=s.match(/^(?:delete|remove) task (\d+)/)){const x=tasksLive()[+m[1]-1];if(x){del(x);return 'Task removed.'}return 'No such task.'}
+  if(m=s.match(/^(?:note|take a note|remember)[:\s]+(?:that )?(.+)/)){addNote(t.trim().slice(t.toLowerCase().indexOf(m[1])));return 'Noted.'}
+  if(/^(show|list|read) (my )?notes/.test(s)){const n=notesLive();return n.length?n.map((x,i)=>`${i+1}. ${x.text}`).join('\n'):'No notes yet.'}
+  if(m=s.match(/^remind me (?:in|after) (.+?) (?:to|that) (.+)/)){const ms=parseDur(m[1]);if(ms){addRem(ms,m[2]);return 'I will remind you in '+m[1]+'.'}}
+  if(m=s.match(/^(?:set (?:a )?)?timer (?:for )?(.+)/)){const ms=parseDur(m[1]);if(ms){addRem(ms,'Your timer is up.');return 'Timer set for '+m[1]+'.'}}
+  if(m=s.match(/^(?:search|google)(?: for)? (.+)/)){window.open('https://www.google.com/search?q='+encodeURIComponent(m[1]),'_blank');return 'Searching for '+m[1]+'.'}
+  if(m=s.match(/^(?:open|launch|go to) (.+)/)){const k=m[1].replace(/\.com$/,'').trim();if(SITES[k]){window.open(SITES[k],'_blank');return 'Opening '+k+'.'}}
+  if(/^(clear|reset) (the )?(chat|conversation)/.test(s)){clearChat();return 'Chat cleared.'}
+  if(/^(hello|hi|hey)\b/.test(s))return 'At your service, '+who()+'. How can I help?';
+  // internet tools
+  if(m=s.match(/^(?:what'?s |what is |how'?s |how is )?(?:the )?(?:weather|temperature|forecast)(?: like)?(?: (?:in|for|at) (.+))?$/)){const city=(m[1]||cfg.city||'').trim();return city?weather(city):'Tell me a city, for example “weather in Delhi”, or set your home city in Settings.'}
+  if(m=s.match(/^(?:convert\s+)?(\d+(?:\.\d+)?)\s*([a-z]{3})\s*(?:to|in|into)\s*([a-z]{3})$/)){return currency(+m[1],m[2].toUpperCase(),m[3].toUpperCase())}
+  if(/(tech|hacker) news|top stories/.test(s))return techNews();
+  return null}
+
+/* ================= AI ================= */
+function systemPrompt(ctx){
+  return `You are JARVIS, a witty, concise, highly capable personal work-assistant AI. Address the user as "${who()}". Keep replies short because they are spoken aloud, and use no markdown.
+Current time: ${new Date().toString()}.
+User's tasks:\n${tasksText()}\nUser's notes:\n${notesLive().map(n=>n.text).join('\n')||'none'}
+${ctx?`Web snippets (Wikipedia, may be outdated; for live facts prefer your own search ability if you have one):\n${ctx}\n`:''}You can manage the user's work by adding action tags on their own lines at the end of your reply:
+[[ADD_TASK: text]]  [[ADD_NOTE: text]]  [[COMPLETE_TASK: number]]  [[REMIND: minutes | text]]
+Only use tags when the user wants that action. The tags are hidden from the user.`}
+function runActions(text){
+  return text.replace(/\[\[(ADD_TASK|ADD_NOTE|COMPLETE_TASK|REMIND):\s*([^\]]+)\]\]/g,(_,k,v)=>{
+    if(k==='ADD_TASK')addTask(v.trim());
+    else if(k==='ADD_NOTE')addNote(v.trim());
+    else if(k==='COMPLETE_TASK'){const x=tasksLive()[parseInt(v)-1];if(x)setDone(x,true)}
+    else if(k==='REMIND'){const [mins,...rest]=v.split('|');const n=parseFloat(mins);if(n>0)addRem(n*60000,rest.join('|').trim())}
+    return ''}).trim()}
+function extract(r){
+  if(typeof r==='string')return r;
+  const c=r?.message?.content;
+  if(typeof c==='string')return c;
+  if(Array.isArray(c))return c.map(x=>x.text||'').join('');
+  return r?.toString?.()||'(no response)'}
+async function askPuter(msgs){
+  if(!window.puter)throw new Error('Puter.js failed to load (check internet / ad-blocker).');
+  if(cfg.web&&cfg.puterModel){
+    try{
+      const opts={model:cfg.puterModel};
+      if(cfg.puterModel.startsWith('openai/'))opts.tools=[{type:'web_search'}];
+      return extract(await puter.ai.chat(msgs,opts));
+    }catch(e){console.warn('Puter search model failed, falling back',e)}
+  }
+  return extract(await puter.ai.chat(msgs));
+}
+async function askGemini(msgs){
+  if(!cfg.gemKey)throw new Error('Add your Gemini API key in Settings.');
+  const sys=msgs.find(m=>m.role==='system').content;
+  const contents=msgs.filter(m=>m.role!=='system').map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]}));
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/${cfg.gemModel||'gemini-2.5-flash'}:generateContent`;
+  const call=async(withSearch)=>{
+    const body={system_instruction:{parts:[{text:sys}]},contents};
+    if(withSearch)body.tools=[{google_search:{}}];
+    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':cfg.gemKey},body:JSON.stringify(body)});
+    const j=await res.json();if(!res.ok)throw new Error(j.error?.message||'Gemini error');
+    return j.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'(no response)'};
+  if(cfg.web){try{return await call(true)}catch(e){console.warn('Gemini search grounding failed, retrying without',e)}}
+  return call(false)}
+function histForAI(){
+  const h=D.hist.filter(x=>x.u>D.histClear).slice(-14).map(x=>({role:x.role,content:x.content}));
+  while(h.length&&h[0].role!=='user')h.shift();return h}
+
+async function handle(text){
+  addMsg(text,'me');
+  const l=local(text);
+  if(l!==null){
+    if(l&&l.then){busy=true;setState('thinking','Fetching…');try{reply(await l)}catch(e){reply('Sorry, I could not fetch that ('+(e.message||e)+').')}busy=false;if(!speaking)idle()}
+    else reply(l);
+    return}
+  if(cfg.provider==='local'){
+    busy=true;setState('thinking','Searching…');
+    let w=null;try{w=cfg.web?await wikiAnswer(text):null}catch{}
+    busy=false;reply(w||"I didn't understand that. Switch the AI brain in Settings for open conversation.");return}
+  pushHist('user',text);commit();
+  busy=true;setState('thinking','Thinking…');const ph=addMsg('…','ai');
+  try{
+    const ctx=await webContext(text);
+    const msgs=[{role:'system',content:systemPrompt(ctx)},...histForAI()];
+    const raw=cfg.provider==='gemini'?await askGemini(msgs):await askPuter(msgs);
+    const out=runActions(raw)||'Done.';
+    ph.textContent=out;pushHist('assistant',out);commit();say(out);
+  }catch(e){
+    ph.textContent='Error: '+(e.message||e);
+    const last=D.hist[D.hist.length-1];if(last&&last.role==='user'&&last.content===text){D.hist.pop();commit()}
+  }
+  busy=false;if(!speaking)idle()}
+
+/* ================= SYNC (no login, end-to-end encrypted) ================= */
+let S=load('j_sync',null);   // {backend:'jb'|'fb', code, fb?}
+const JB='https://jsonblob.com/api/jsonBlob';
+const te=new TextEncoder(),td=new TextDecoder();
+const b64=u8=>{let s='';u8.forEach(c=>s+=String.fromCharCode(c));return btoa(s)};
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const keyCache={};
+async function getKey(code){
+  if(keyCache[code])return keyCache[code];
+  const base=await crypto.subtle.importKey('raw',te.encode(code),'PBKDF2',false,['deriveKey']);
+  return keyCache[code]=await crypto.subtle.deriveKey({name:'PBKDF2',salt:te.encode('jarvis-sync-v1'),iterations:150000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
+async function encryptData(obj){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await getKey(S.code),te.encode(JSON.stringify(obj))));
+  return{v:1,iv:b64(iv),d:b64(ct)}}
+async function decryptData(o){
+  try{const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(o.iv)},await getKey(S.code),unb64(o.d));return JSON.parse(td.decode(pt))}
+  catch{throw new Error('Could not decrypt: wrong sync code?')}}
+const fbBase=u=>{u=(u||'').trim().replace(/\/+$/,'');return /^https:\/\/.+/.test(u)?u:''};
+async function remoteGet(){
+  if(S.backend==='fb'){const r=await fetch(`${S.fb}/jarvis/${S.code}.json`);if(!r.ok)throw new Error('Firebase HTTP '+r.status+' (check rules/URL)');return r.json()}
+  const r=await fetch(`${JB}/${S.code}`,{headers:{Accept:'application/json'}});
+  if(r.status===404)throw new Error('Sync not found (code expired?)');
+  if(!r.ok)throw new Error('jsonblob HTTP '+r.status);return r.json()}
+async function remotePut(obj){
+  if(S.backend==='fb'){const r=await fetch(`${S.fb}/jarvis/${S.code}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)});if(!r.ok)throw new Error('Firebase HTTP '+r.status);return}
+  const r=await fetch(`${JB}/${S.code}`,{method:'PUT',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(obj)});
+  if(!r.ok)throw new Error('jsonblob HTTP '+r.status)}
+
+let syncing=false,syncTimer=null;
+function setSync(t,err){$('syncBadge').textContent='Sync: '+t;$('syncBadge').style.color=err?'#ff7a7a':'';$('syncState').textContent=S?t+' · '+(S.backend==='fb'?'Firebase':'jsonblob'):'Not connected'}
+function scheduleSync(){if(!S)return;clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,1500)}
+async function syncNow(){
+  if(!S||syncing)return;syncing=true;setSync('syncing…');
+  try{
+    const enc=await remoteGet();
+    let remote=null;if(enc&&enc.iv&&enc.d)remote=await decryptData(enc);
+    const before=canon(D);
+    const merged=remote?mergeData(D,remote):D;
+    const localChanged=canon(merged)!==before;
+    D=merged;save('j_data',D);renderAll();
+    if(localChanged&&!busy)renderChat();
+    if(!remote||canon(merged)!==canon(remote))await remotePut(await encryptData(D));
+    setSync('synced '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
+  }catch(e){setSync('error – '+(e.message||e),true)}
+  syncing=false}
+function randCode(){return [...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('')}
+function renderSync(){
+  $('syncOff').style.display=S?'none':'flex';$('syncOn').style.display=S?'flex':'none';
+  if(!S)setSync('off');}
+function deviceLink(){return location.origin+location.pathname+'#s='+[S.backend,S.code,S.fb||''].map(encodeURIComponent).join('~')}
+function parseLink(txt){
+  txt=txt.trim();const i=txt.indexOf('#s=');
+  if(i>=0){const [backend,code,fb]=txt.slice(i+3).split('~').map(decodeURIComponent);if((backend==='jb'||backend==='fb')&&code)return{backend,code,fb:fb||undefined}}
+  return null}
+async function connectWith(obj){S=obj;save('j_sync',S);renderSync();await syncNow()}
+$('syncBackend').onchange=()=>{$('fbBox').style.display=$('syncBackend').value==='fb'?'block':'none'};
+$('syncCreate').onclick=async()=>{
+  try{
+    if($('syncBackend').value==='fb'){
+      const u=fbBase($('fbUrl').value);if(!u){alert('Paste your Firebase database URL (https://…firebaseio.com).');return}
+      await connectWith({backend:'fb',fb:u,code:randCode()});
+    }else{
+      setSync('creating…');
+      const r=await fetch(JB,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:'{"v":0}'});
+      const loc=r.headers.get('Location');
+      if(!r.ok||!loc)throw new Error('jsonblob did not return an id. Use the Firebase option instead.');
+      await connectWith({backend:'jb',code:loc.split('/').pop()});
+    }
+  }catch(e){setSync('error – '+(e.message||e),true);alert('Could not create sync: '+(e.message||e))}};
+$('syncConnect').onclick=async()=>{
+  const v=$('syncJoin').value.trim();if(!v)return;
+  let o=parseLink(v);
+  if(!o){const backend=$('syncBackend').value;o={backend,code:v,fb:backend==='fb'?fbBase($('fbUrl').value):undefined};if(backend==='fb'&&!o.fb){alert('Enter the Firebase URL too, or paste the full device link.');return}}
+  await connectWith(o)};
+$('syncCopy').onclick=async()=>{try{await navigator.clipboard.writeText(deviceLink());setSync('link copied')}catch{prompt('Copy this link:',deviceLink())}};
+$('syncNowBtn').onclick=syncNow;
+$('syncOffBtn').onclick=()=>{if(confirm('Disconnect this device? Data stays on this device and in the cloud.')){S=null;localStorage.removeItem('j_sync');renderSync()}};
+setInterval(()=>{if(S&&document.visibilityState==='visible')syncNow()},20000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncNow()});
+
+/* ================= WIRING ================= */
+function send(){const v=$('msg').value.trim();if(!v)return;$('msg').value='';handle(v)}
+$('sendBtn').onclick=send;$('msg').onkeydown=e=>{if(e.key==='Enter')send()};
+$('clearBtn').onclick=clearChat;
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('act',x===b));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('act',p.id===b.dataset.t))});
+function showBoxes(){$('gemBox').style.display=cfg.provider==='gemini'?'block':'none';$('puterBox').style.display=cfg.provider==='puter'?'block':'none'}
+function syncCfg(){$('provider').value=cfg.provider;$('gemKey').value=cfg.gemKey;$('gemModel').value=cfg.gemModel;$('puterModel').value=cfg.puterModel;$('rate').value=cfg.rate;$('rv').textContent=cfg.rate;$('speakOn').checked=cfg.speak;$('webOn').checked=cfg.web;$('city').value=cfg.city;$('userName').value=D.name;showBoxes()}
+function readCfg(){
+  cfg.provider=$('provider').value;cfg.gemKey=$('gemKey').value.trim();cfg.gemModel=$('gemModel').value.trim()||'gemini-2.5-flash';cfg.puterModel=$('puterModel').value.trim();
+  cfg.voice=$('voiceSel').value||cfg.voice;cfg.rate=+$('rate').value;$('rv').textContent=cfg.rate;cfg.speak=$('speakOn').checked;cfg.web=$('webOn').checked;cfg.city=$('city').value.trim();
+  save('j_cfg',cfg);showBoxes();
+  const nm=$('userName').value.trim();if(nm!==D.name){D.name=nm;D.nameU=Date.now();commit()}}
+['provider','gemKey','gemModel','puterModel','voiceSel','rate','speakOn','webOn','city','userName'].forEach(id=>$(id).addEventListener('input',readCfg));
+
+/* ================= START ================= */
+syncCfg();renderAll();renderChat();renderSync();
+const h=new Date().getHours();
+addMsg(`Good ${h<12?'morning':h<18?'afternoon':'evening'}, ${who()}. You have ${tasksLive().filter(t=>!t.done).length} open task(s). Try “weather in Delhi”, “convert 100 USD to INR”, “tech news”, or just ask me anything.`,'ai');
+// connect from a device link (#s=...)
+(async()=>{
+  const o=parseLink(location.hash);
+  if(o){history.replaceState(null,'',location.pathname+location.search);await connectWith(o)}
+  else if(S){setSync('connecting…');syncNow()}
+})();
+</script>
+</body>
+</html>
